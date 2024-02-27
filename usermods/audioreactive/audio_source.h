@@ -191,12 +191,12 @@ class I2SSource : public AudioSource {
       };
     }
 
-    virtual void initialize(int8_t i2swsPin = I2S_PIN_NO_CHANGE, int8_t i2ssdPin = I2S_PIN_NO_CHANGE, int8_t i2sckPin = I2S_PIN_NO_CHANGE, int8_t mclkPin = I2S_PIN_NO_CHANGE) {
+    virtual void initialize(int8_t i2swsPin = I2S_PIN_NO_CHANGE, int8_t i2sdinPin = I2S_PIN_NO_CHANGE, int8_t i2sdoutPin = I2S_PIN_NO_CHANGE, int8_t i2sckPin = I2S_PIN_NO_CHANGE, int8_t mclkPin = I2S_PIN_NO_CHANGE) {
       DEBUGSR_PRINTLN("I2SSource:: initialize().");
-      if (i2swsPin != I2S_PIN_NO_CHANGE && i2ssdPin != I2S_PIN_NO_CHANGE) {
+      if (i2swsPin != I2S_PIN_NO_CHANGE && i2sdinPin != I2S_PIN_NO_CHANGE) {
         if (!pinManager.allocatePin(i2swsPin, true, PinOwner::UM_Audioreactive) ||
-            !pinManager.allocatePin(i2ssdPin, false, PinOwner::UM_Audioreactive)) { // #206
-          DEBUGSR_PRINTF("\nAR: Failed to allocate I2S pins: ws=%d, sd=%d\n",  i2swsPin, i2ssdPin); 
+            !pinManager.allocatePin(i2sdinPin, false, PinOwner::UM_Audioreactive)) { // #206
+          DEBUGSR_PRINTF("\nAR: Failed to allocate I2S pins: ws=%d, sd=%d\n",  i2swsPin, i2sdinPin); 
           return;
         }
       }
@@ -262,11 +262,11 @@ class I2SSource : public AudioSource {
 #endif
         .bck_io_num = i2sckPin,
         .ws_io_num = i2swsPin,
-        .data_out_num = I2S_PIN_NO_CHANGE,
-        .data_in_num = i2ssdPin
+        .data_out_num = i2sdoutPin,
+        .data_in_num = i2sdinPin
       };
 
-      //DEBUGSR_PRINTF("[AR] I2S: SD=%d, WS=%d, SCK=%d, MCLK=%d\n", i2ssdPin, i2swsPin, i2sckPin, mclkPin);
+      //DEBUGSR_PRINTF("[AR] I2S: SD=%d, WS=%d, SCK=%d, MCLK=%d\n", i2sdinPin, i2swsPin, i2sckPin, mclkPin);
 
       esp_err_t err = i2s_driver_install(I2S_NUM_0, &_config, 0, nullptr);
       if (err != ESP_OK) {
@@ -307,9 +307,10 @@ class I2SSource : public AudioSource {
         DEBUGSR_PRINTF("Failed to uninstall i2s driver: %d\n", err);
         return;
       }
-      if (_pinConfig.ws_io_num   != I2S_PIN_NO_CHANGE) pinManager.deallocatePin(_pinConfig.ws_io_num,   PinOwner::UM_Audioreactive);
-      if (_pinConfig.data_in_num != I2S_PIN_NO_CHANGE) pinManager.deallocatePin(_pinConfig.data_in_num, PinOwner::UM_Audioreactive);
-      if (_pinConfig.bck_io_num  != I2S_PIN_NO_CHANGE) pinManager.deallocatePin(_pinConfig.bck_io_num,  PinOwner::UM_Audioreactive);
+      if (_pinConfig.ws_io_num    != I2S_PIN_NO_CHANGE) pinManager.deallocatePin(_pinConfig.ws_io_num,    PinOwner::UM_Audioreactive);
+      if (_pinConfig.data_in_num  != I2S_PIN_NO_CHANGE) pinManager.deallocatePin(_pinConfig.data_in_num,  PinOwner::UM_Audioreactive);
+      if (_pinConfig.data_out_num != I2S_PIN_NO_CHANGE) pinManager.deallocatePin(_pinConfig.data_out_num, PinOwner::UM_Audioreactive);
+      if (_pinConfig.bck_io_num   != I2S_PIN_NO_CHANGE) pinManager.deallocatePin(_pinConfig.bck_io_num,   PinOwner::UM_Audioreactive);
       // Release the master clock pin
       if (_mclkPin != I2S_PIN_NO_CHANGE) pinManager.deallocatePin(_mclkPin, PinOwner::UM_Audioreactive);
     }
@@ -324,6 +325,15 @@ class I2SSource : public AudioSource {
         if (err != ESP_OK) {
           DEBUGSR_PRINTF("Failed to get samples: %d\n", err);
           return;
+        }
+
+        // Pass-through: write the received samples back to I2S output
+        if (_pinConfig.data_out_num != I2S_PIN_NO_CHANGE) {
+          err = i2s_write(I2S_NUM_0, (const void *)newSamples, sizeof(newSamples), &bytes_read, portMAX_DELAY);
+          if (err != ESP_OK) {
+            DEBUGSR_PRINTF("Failed to write samples: %d\n", err);
+            return;
+          }
         }
 
         // For correct operation, we need to read exactly sizeof(samples) bytes from i2s
@@ -348,6 +358,7 @@ class I2SSource : public AudioSource {
         }
       }
     }
+
 
   protected:
     void _routeMclk(int8_t mclkPin) {
@@ -412,7 +423,7 @@ public:
       _config.channel_format = I2S_CHANNEL_FMT_ONLY_RIGHT;
     };
 
-    void initialize(int8_t i2swsPin, int8_t i2ssdPin, int8_t i2sckPin, int8_t mclkPin) {
+    void initialize(int8_t i2swsPin, int8_t i2sdinPin, int8_t i2sckPin, int8_t mclkPin) {
       DEBUGSR_PRINTLN("ES7243:: initialize();");
       if ((i2sckPin < 0) || (mclkPin < 0)) {
         DEBUGSR_PRINTF("\nAR: invalid I2S pin: SCK=%d, MCLK=%d\n", i2sckPin, mclkPin); 
@@ -421,7 +432,7 @@ public:
 
       // First route mclk, then configure ADC over I2C, then configure I2S
       _es7243InitAdc();
-      I2SSource::initialize(i2swsPin, i2ssdPin, i2sckPin, mclkPin);
+      I2SSource::initialize(i2swsPin, i2sdinPin, i2sckPin, mclkPin);
     }
 
     void deinitialize() {
@@ -528,7 +539,7 @@ class ES8388Source : public I2SSource {
       _config.channel_format = I2S_CHANNEL_FMT_ONLY_LEFT;
     };
 
-    void initialize(int8_t i2swsPin, int8_t i2ssdPin, int8_t i2sckPin, int8_t mclkPin) {
+    void initialize(int8_t i2swsPin, int8_t i2sdinPin, int8_t i2sckPin, int8_t mclkPin) {
       DEBUGSR_PRINTLN("ES8388Source:: initialize();");
       if ((i2sckPin < 0) || (mclkPin < 0)) {
         DEBUGSR_PRINTF("\nAR: invalid I2S pin: SCK=%d, MCLK=%d\n", i2sckPin, mclkPin); 
@@ -537,7 +548,7 @@ class ES8388Source : public I2SSource {
 
       // First route mclk, then configure ADC over I2C, then configure I2S
       _es8388InitAdc();
-      I2SSource::initialize(i2swsPin, i2ssdPin, i2sckPin, mclkPin);
+      I2SSource::initialize(i2swsPin, i2sdinPin, i2sckPin, mclkPin);
     }
 
     void deinitialize() {
@@ -758,9 +769,9 @@ class SPH0654 : public I2SSource {
       I2SSource(sampleRate, blockSize, sampleScale)
     {}
 
-    void initialize(int8_t i2swsPin, int8_t i2ssdPin, int8_t i2sckPin, int8_t = I2S_PIN_NO_CHANGE) {
+    void initialize(int8_t i2swsPin, int8_t i2sdinPin, int8_t i2sckPin, int8_t = I2S_PIN_NO_CHANGE) {
       DEBUGSR_PRINTLN("SPH0654:: initialize();");
-      I2SSource::initialize(i2swsPin, i2ssdPin, i2sckPin);
+      I2SSource::initialize(i2swsPin, i2sdinPin, i2sckPin);
 #if !defined(CONFIG_IDF_TARGET_ESP32S2) && !defined(CONFIG_IDF_TARGET_ESP32C3) && !defined(CONFIG_IDF_TARGET_ESP32S3)
 // these registers are only existing in "classic" ESP32
       REG_SET_BIT(I2S_TIMING_REG(I2S_NUM_0), BIT(9));

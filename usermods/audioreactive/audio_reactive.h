@@ -569,10 +569,15 @@ class AudioReactive : public Usermod {
     #else
     uint8_t dmType = SR_DMTYPE;
     #endif
-    #ifndef I2S_SDPIN // aka DOUT
-    int8_t i2ssdPin = 32;
+    #ifndef I2S_DINPIN // previously confusingly called I2S_SD_PIN along with comment claiming it would be DOUT
+    int8_t i2sdinPin = 32;
     #else
-    int8_t i2ssdPin = I2S_SDPIN;
+    int8_t i2sdinPin = I2S_DINPIN;
+    #endif
+    #ifndef I2S_DOUTPIN // used for audio pass-through from line-in to headphone out
+    int8_t i2sdoutPin = I2S_PIN_NO_CHANGE;
+    #else
+    int8_t i2sdoutPin = I2S_DOUTPIN;
     #endif
     #ifndef I2S_WSPIN // aka LRCL
     int8_t i2swsPin = 15;
@@ -1143,25 +1148,25 @@ class AudioReactive : public Usermod {
           DEBUGSR_PRINT(F("AR: Generic I2S Microphone - ")); DEBUGSR_PRINTLN(F(I2S_MIC_CHANNEL_TEXT));
           audioSource = new I2SSource(SAMPLE_RATE, BLOCK_SIZE);
           delay(100);
-          if (audioSource) audioSource->initialize(i2swsPin, i2ssdPin, i2sckPin);
+          if (audioSource) audioSource->initialize(i2swsPin, i2sdinPin, i2sckPin);
           break;
         case 2:
           DEBUGSR_PRINTLN(F("AR: ES7243 Microphone (right channel only)."));
           audioSource = new ES7243(SAMPLE_RATE, BLOCK_SIZE);
           delay(100);
-          if (audioSource) audioSource->initialize(i2swsPin, i2ssdPin, i2sckPin, mclkPin);
+          if (audioSource) audioSource->initialize(i2swsPin, i2sdinPin, i2sckPin, mclkPin);
           break;
         case 3:
           DEBUGSR_PRINT(F("AR: SPH0645 Microphone - ")); DEBUGSR_PRINTLN(F(I2S_MIC_CHANNEL_TEXT));
           audioSource = new SPH0654(SAMPLE_RATE, BLOCK_SIZE);
           delay(100);
-          audioSource->initialize(i2swsPin, i2ssdPin, i2sckPin);
+          audioSource->initialize(i2swsPin, i2sdinPin, i2sckPin);
           break;
         case 4:
           DEBUGSR_PRINT(F("AR: Generic I2S Microphone with Master Clock - ")); DEBUGSR_PRINTLN(F(I2S_MIC_CHANNEL_TEXT));
           audioSource = new I2SSource(SAMPLE_RATE, BLOCK_SIZE, 1.0f/24.0f);
           delay(100);
-          if (audioSource) audioSource->initialize(i2swsPin, i2ssdPin, i2sckPin, mclkPin);
+          if (audioSource) audioSource->initialize(i2swsPin, i2sdinPin, i2sckPin, mclkPin);
           break;
         #if  !defined(CONFIG_IDF_TARGET_ESP32S2) && !defined(CONFIG_IDF_TARGET_ESP32C3)
         case 5:
@@ -1169,14 +1174,14 @@ class AudioReactive : public Usermod {
           audioSource = new I2SSource(SAMPLE_RATE, BLOCK_SIZE, 1.0f/4.0f);
           useBandPassFilter = true;  // this reduces the noise floor on SPM1423 from 5% Vpp (~380) down to 0.05% Vpp (~5)
           delay(100);
-          if (audioSource) audioSource->initialize(i2swsPin, i2ssdPin);
+          if (audioSource) audioSource->initialize(i2swsPin, i2sdinPin);
           break;
         #endif
         case 6:
           DEBUGSR_PRINTLN(F("AR: ES8388 Source"));
           audioSource = new ES8388Source(SAMPLE_RATE, BLOCK_SIZE);
           delay(100);
-          if (audioSource) audioSource->initialize(i2swsPin, i2ssdPin, i2sckPin, mclkPin);
+          if (audioSource) audioSource->initialize(i2swsPin, i2sdinPin, i2sdoutPin, i2sckPin, mclkPin);
           break;
 
         #if  !defined(CONFIG_IDF_TARGET_ESP32S2) && !defined(CONFIG_IDF_TARGET_ESP32C3) && !defined(CONFIG_IDF_TARGET_ESP32S3)
@@ -1678,7 +1683,8 @@ class AudioReactive : public Usermod {
       JsonObject dmic = top.createNestedObject(FPSTR(_digitalmic));
       dmic[F("type")] = dmType;
       JsonArray pinArray = dmic.createNestedArray("pin");
-      pinArray.add(i2ssdPin);
+      pinArray.add(i2sdinPin);
+      pinArray.add(i2sdoutPin);
       pinArray.add(i2swsPin);
       pinArray.add(i2sckPin);
       pinArray.add(mclkPin);
@@ -1738,10 +1744,11 @@ class AudioReactive : public Usermod {
       #endif
     #endif
 
-      configComplete &= getJsonValue(top[FPSTR(_digitalmic)]["pin"][0], i2ssdPin);
-      configComplete &= getJsonValue(top[FPSTR(_digitalmic)]["pin"][1], i2swsPin);
-      configComplete &= getJsonValue(top[FPSTR(_digitalmic)]["pin"][2], i2sckPin);
-      configComplete &= getJsonValue(top[FPSTR(_digitalmic)]["pin"][3], mclkPin);
+      configComplete &= getJsonValue(top[FPSTR(_digitalmic)]["pin"][0], i2sdinPin);
+      configComplete &= getJsonValue(top[FPSTR(_digitalmic)]["pin"][1], i2sdoutPin);
+      configComplete &= getJsonValue(top[FPSTR(_digitalmic)]["pin"][2], i2swsPin);
+      configComplete &= getJsonValue(top[FPSTR(_digitalmic)]["pin"][3], i2sckPin);
+      configComplete &= getJsonValue(top[FPSTR(_digitalmic)]["pin"][4], mclkPin);
 
       configComplete &= getJsonValue(top["config"][F("squelch")], soundSquelch);
       configComplete &= getJsonValue(top["config"][F("gain")],    sampleGain);
@@ -1799,13 +1806,14 @@ class AudioReactive : public Usermod {
       oappend(SET_F("addOption(dd,'Send',1);"));
       oappend(SET_F("addOption(dd,'Receive',2);"));
       oappend(SET_F("addInfo('AudioReactive:digitalmic:type',1,'<i>requires reboot!</i>');"));  // 0 is field type, 1 is actual field
-      oappend(SET_F("addInfo('AudioReactive:digitalmic:pin[]',0,'<i>sd/data/dout</i>','I2S SD');"));
-      oappend(SET_F("addInfo('AudioReactive:digitalmic:pin[]',1,'<i>ws/clk/lrck</i>','I2S WS');"));
-      oappend(SET_F("addInfo('AudioReactive:digitalmic:pin[]',2,'<i>sck/bclk</i>','I2S SCK');"));
+      oappend(SET_F("addInfo('AudioReactive:digitalmic:pin[]',0,'<i>sd/data/data_in</i>','I2S DIN');"));
+      oappend(SET_F("addInfo('AudioReactive:digitalmic:pin[]',1,'<i>sdin/data_out</i>','I2S DOUT');"));
+      oappend(SET_F("addInfo('AudioReactive:digitalmic:pin[]',2,'<i>ws/clk/lrck</i>','I2S WS');"));
+      oappend(SET_F("addInfo('AudioReactive:digitalmic:pin[]',3,'<i>sck/bclk</i>','I2S SCK');"));
       #if !defined(CONFIG_IDF_TARGET_ESP32S2) && !defined(CONFIG_IDF_TARGET_ESP32C3) && !defined(CONFIG_IDF_TARGET_ESP32S3)
-        oappend(SET_F("addInfo('AudioReactive:digitalmic:pin[]',3,'<i>only use -1, 0, 1 or 3</i>','I2S MCLK');"));
+        oappend(SET_F("addInfo('AudioReactive:digitalmic:pin[]',4,'<i>only use -1, 0, 1 or 3</i>','I2S MCLK');"));
       #else
-        oappend(SET_F("addInfo('AudioReactive:digitalmic:pin[]',3,'<i>master clock</i>','I2S MCLK');"));
+        oappend(SET_F("addInfo('AudioReactive:digitalmic:pin[]',4,'<i>master clock</i>','I2S MCLK');"));
       #endif
     }
 

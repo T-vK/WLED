@@ -48,7 +48,8 @@ If you want to define default GPIOs during compile time, use the following (defa
 
 - `-D SR_DMTYPE=x` : defines digital microphone type: 0=analog, 1=generic I2S (default), 2=ES7243 I2S, 3=SPH0645 I2S, 4=generic I2S with master clock, 5=PDM I2S
 - `-D AUDIOPIN=x`  : GPIO for analog microphone/AUX-in (36)
-- `-D I2S_SDPIN=x` : GPIO for SD pin on digital microphone (32)
+- `-D I2S_DINPIN=x` : GPIO for DIN (aka SD) pin on digital microphone (32)
+- `-D I2S_DOUTPIN=x` : GPIO for DOUT pin for audio pass-through on boards with Line-In and Headphone Out (-1)
 - `-D I2S_WSPIN=x` : GPIO for WS pin on digital microphone (15)
 - `-D I2S_CKPIN=x` : GPIO for SCK pin on digital microphone (14)
 - `-D MCLK_PIN=x`  : GPIO for master clock pin on digital Line-In boards (-1)
