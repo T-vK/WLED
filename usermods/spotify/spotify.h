@@ -139,13 +139,15 @@ class SpotifyUsermod : public Usermod {
       if (millis() - lastTime > 8000 && sp && sp->is_auth()) {
         DEBUG_PRINTLN("Authenticated!");
         // sp->get_track("7gHs73wELdeycvS48JfIos");
-        
         JsonDocument playback_state_filter;
-        playback_state_filter["timestamp"] = true;
-        playback_state_filter["is_playing"] = true;
-        playback_state_filter["progress_ms"] = true;
-        playback_state_filter["item"]["id"] = true;
-        playback_state_filter["item"]["name"] = true;
+        sp->Test("https://api.spotify.com/v1/", "GET", 0, "", JsonDocument());
+        
+        // JsonDocument playback_state_filter;
+        // playback_state_filter["timestamp"] = true;
+        // playback_state_filter["is_playing"] = true;
+        // playback_state_filter["progress_ms"] = true;
+        // playback_state_filter["item"]["id"] = true;
+        // playback_state_filter["item"]["name"] = true;
 
         // JsonDocument audio_analysis_filter;
         // audio_analysis_filter["track"]["tempo"] = true;
@@ -155,7 +157,7 @@ class SpotifyUsermod : public Usermod {
         // audio_analysis_filter["beats"][0]["start"] = true;
         // audio_analysis_filter["bars"][0]["start"] = true;
 
-        response playback_state = sp->current_playback_state(playback_state_filter);
+        // response playback_state = sp->current_playback_state(playback_state_filter);
         // String song_title = playback_state.reply["item"]["name"].as<String>();
         // String song_id = playback_state.reply["item"]["id"].as<String>();
         // int progress_ms = playback_state.reply["progress_ms"].as<int>();
