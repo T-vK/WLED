@@ -19,6 +19,7 @@
 #define DISABLE_SIMPIFIED
 #define DISABLE_WEB_SERVER
 #include <SpotifyEsp32.h>
+#include <SpotifyEsp32.cpp>
 
 const char *renewRefreshTokenJs PROGMEM =
   "window.getCfg = async () => (await (await fetch(getURL(`/cfg.json`))).json()).um.SpotifyUsermod;"
@@ -132,81 +133,89 @@ class SpotifyUsermod : public Usermod {
         DEBUG_PRINTLN(clientSecret);
         DEBUG_PRINT(F("refreshToken: "));
         DEBUG_PRINTLN(refreshToken);
-        sp = new Spotify(clientId.c_str(), clientSecret.c_str(), refreshToken.c_str()); // Construct Spotify object with provided client ID and client secret
+        sp = new Spotify(clientId.c_str(), clientSecret.c_str(), refreshToken.c_str(), 80, true); // Construct Spotify object with provided client ID and client secret
+        DEBUG_PRINTLN(F("Instanciated Spotify object"));
         sp->begin();
+        DEBUG_PRINTLN(F("Called Spoitfy::begin()"));
       }
 
-      if (millis() - lastTime > 8000 && sp && sp->is_auth()) {
-        DEBUG_PRINTLN("Authenticated!");
-        // sp->get_track("7gHs73wELdeycvS48JfIos");
-        JsonDocument playback_state_filter;
-        sp->Test("https://api.spotify.com/v1/", "GET", 0, "", JsonDocument());
+      if (millis() - lastTime > 8000 && sp && sp->is_auth() && WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)){
+        IPAddress ip = WiFi.localIP();
+        DEBUG_PRINT(F("IP Address: "));
+        DEBUG_PRINTLN(ip);
         
-        // JsonDocument playback_state_filter;
-        // playback_state_filter["timestamp"] = true;
-        // playback_state_filter["is_playing"] = true;
-        // playback_state_filter["progress_ms"] = true;
-        // playback_state_filter["item"]["id"] = true;
-        // playback_state_filter["item"]["name"] = true;
-
-        // JsonDocument audio_analysis_filter;
-        // audio_analysis_filter["track"]["tempo"] = true;
-        // audio_analysis_filter["track"]["time_signature"] = true;
-        // audio_analysis_filter["track"]["key"] = true;
-        // audio_analysis_filter["track"]["mode"] = true;
-        // audio_analysis_filter["beats"][0]["start"] = true;
-        // audio_analysis_filter["bars"][0]["start"] = true;
-
-        // response playback_state = sp->current_playback_state(playback_state_filter);
-        // String song_title = playback_state.reply["item"]["name"].as<String>();
-        // String song_id = playback_state.reply["item"]["id"].as<String>();
-        // int progress_ms = playback_state.reply["progress_ms"].as<int>();
-        // String playback_position = formatMilliseconds(progress_ms);
-
-        // if (song_id == "null") {
-        //   DEBUG_PRINTLN("No song is currently playing!");
-        //   return;
-        // }
-
-        // DEBUG_PRINT("Song Title: ");
-        // DEBUG_PRINTLN(song_title);
-        // DEBUG_PRINT("Song ID: ");
-        // DEBUG_PRINTLN(song_id);
-        // DEBUG_PRINT("Playback Position: ");
-        // DEBUG_PRINT(playback_position);
-
-        // const char* track_id = playback_state.reply["item"]["id"];
-
-        // DEBUG_PRINTLN("\nGetting audio analysis...");
-        // response audio_analysis = sp->get_track_audio_analysis(const_cast<char*>(track_id), audio_analysis_filter);
-
-        // float tempo = audio_analysis.reply["track"]["tempo"].as<float>();
-        // int key = audio_analysis.reply["track"]["key"].as<int>();
-        // int mode = audio_analysis.reply["track"]["mode"].as<int>();
-        // String key_signature = getKeySignature(key, mode);
-        // int time_signature_numerator = audio_analysis.reply["track"]["time_signature"].as<int>();
-        // String time_signature = String(time_signature_numerator) + "/4";
-
-        // DEBUG_PRINT("Tempo: ");
-        // DEBUG_PRINT(tempo);
-        // DEBUG_PRINTLN("bpm");
-        // DEBUG_PRINT("Time Signature: ");
-        // DEBUG_PRINTLN(time_signature);
-        // DEBUG_PRINT("Key Signature: ");
-        // DEBUG_PRINTLN(key_signature);
-        
-        // JsonArray bars = audio_analysis.reply["bars"].as<JsonArray>();
-        // for (JsonVariant bar : bars) {
-        //     float bar_start_time = bar["start"].as<float>();
-        //     int bar_start_time_ms = (float)bar_start_time*1000.0;
-        //     if (bar_start_time_ms >= progress_ms) {
-        //       DEBUG_PRINT("Next bar in: ");
-        //       DEBUG_PRINT(bar_start_time_ms-progress_ms);
-        //       DEBUG_PRINTLN("ms");
-        //       break;
-        //     }
-        // }
         lastTime = millis();
+        DEBUG_PRINTLN("Authenticated!");
+        JsonDocument playback_state_filter;
+        playback_state_filter["timestamp"] = true;
+        playback_state_filter["is_playing"] = true;
+        playback_state_filter["progress_ms"] = true;
+        playback_state_filter["item"]["id"] = true;
+        playback_state_filter["item"]["name"] = true;
+        
+        JsonDocument audio_analysis_filter;
+        audio_analysis_filter["track"]["tempo"] = true;
+        audio_analysis_filter["track"]["time_signature"] = true;
+        audio_analysis_filter["track"]["key"] = true;
+        audio_analysis_filter["track"]["mode"] = true;
+        audio_analysis_filter["beats"][0]["start"] = true;
+        audio_analysis_filter["bars"][0]["start"] = true;
+
+        response playback_state_response = sp->current_playback_state(playback_state_filter);
+        int status_code = playback_state_response.status_code;
+        const String track_id = playback_state_response.reply["item"]["id"].as<String>();
+
+        DEBUG_PRINT("Status Code: ");
+        DEBUG_PRINTLN(status_code);
+
+        if (track_id == "null") {
+          DEBUG_PRINTLN("No song is currently playing!");
+          return;
+        }
+
+        String song_title = playback_state_response.reply["item"]["name"].as<String>();
+        //String song_id = playback_state_response.reply["item"]["id"].as<String>();
+
+        int progress_ms = playback_state_response.reply["progress_ms"].as<int>();
+        String playback_position = formatMilliseconds(progress_ms);
+
+        DEBUG_PRINT("Song Title: ");
+        DEBUG_PRINTLN(song_title);
+        DEBUG_PRINT("Song ID: ");
+        DEBUG_PRINTLN(track_id);
+        DEBUG_PRINT("Playback Position: ");
+        DEBUG_PRINT(playback_position);
+
+
+        DEBUG_PRINTLN("\nGetting audio analysis...");
+        response audio_analysis = sp->get_track_audio_analysis(track_id.c_str(), audio_analysis_filter);
+
+        float tempo = audio_analysis.reply["track"]["tempo"].as<float>();
+        int key = audio_analysis.reply["track"]["key"].as<int>();
+        int mode = audio_analysis.reply["track"]["mode"].as<int>();
+        String key_signature = getKeySignature(key, mode);
+        int time_signature_numerator = audio_analysis.reply["track"]["time_signature"].as<int>();
+        String time_signature = String(time_signature_numerator) + "/4";
+
+        DEBUG_PRINT("Tempo: ");
+        DEBUG_PRINT(tempo);
+        DEBUG_PRINTLN("bpm");
+        DEBUG_PRINT("Time Signature: ");
+        DEBUG_PRINTLN(time_signature);
+        DEBUG_PRINT("Key Signature: ");
+        DEBUG_PRINTLN(key_signature);
+        
+        JsonArray bars = audio_analysis.reply["bars"].as<JsonArray>();
+        for (JsonVariant bar : bars) {
+            float bar_start_time = bar["start"].as<float>();
+            int bar_start_time_ms = (float)bar_start_time*1000.0;
+            if (bar_start_time_ms >= progress_ms) {
+              DEBUG_PRINT("Next bar in: ");
+              DEBUG_PRINT(bar_start_time_ms-progress_ms);
+              DEBUG_PRINTLN("ms");
+              break;
+            }
+        }
       }
     }
 
@@ -228,7 +237,7 @@ class SpotifyUsermod : public Usermod {
     void readFromJsonState(JsonObject& root) {
       if (!initDone) return;  // prevent crash on boot applyPreset()
 
-      JsonObject usermod = root[FPSTR(_name)];
+      //JsonObject usermod = root[FPSTR(_name)];
       //if (!usermod.isNull()) {
         // expect JSON usermod data in usermod name object: {"SpotifyUsermod:{"user0":10}"}
       //  userVar0 = usermod["user0"] | userVar0; //if "user0" key exists in JSON, update, else keep old value
