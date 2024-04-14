@@ -145,6 +145,10 @@
   #include "../usermods/audioreactive/audio_reactive.h"
 #endif
 
+#ifdef USERMOD_SPOTIFY
+  #include "../usermods/spotify/spotify.h"
+#endif
+
 #ifdef USERMOD_ANALOG_CLOCK
   #include "../usermods/Analog_Clock/Analog_Clock.h"
 #endif
@@ -352,6 +356,10 @@ void registerUsermods()
 
   #ifdef USERMOD_AUDIOREACTIVE
   usermods.add(new AudioReactive());
+  #endif
+
+  #ifdef USERMOD_SPOTIFY
+  usermods.add(new SpotifyUsermod());
   #endif
 
   #ifdef USERMOD_ANALOG_CLOCK
