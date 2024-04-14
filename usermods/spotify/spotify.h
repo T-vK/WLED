@@ -162,15 +162,8 @@ class SpotifyUsermod : public Usermod {
       }
 
       if (millis() - lastTime > 8000 && sp && sp->is_auth() && WiFi.status() == WL_CONNECTED) {
-        if (sp->_access_token[0] == '\0') { // If access token is empty, get one
-          DEBUG_PRINTLN("Getting access token...");
-          sp->get_token();
-          if (sp->_access_token[0] == '\0') {
-            DEBUG_PRINTLN("Failed to get access token!");
-            return;
-          }
-        }
-        DEBUG_PRINTLN("Got access token!");
+        //sp->get_token(); // Todo
+        //DEBUG_PRINTLN("Got access token!");
         lastTime = millis();
         JsonDocument playback_state_filter;
         playback_state_filter["timestamp"] = true;
