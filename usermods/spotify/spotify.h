@@ -72,10 +72,30 @@ class SpotifyUsermod : public Usermod {
         DEBUG_PRINTLN(F("/spotify-callback was called!"));
         if (request->hasParam("code")) {
           AsyncWebParameter* param = request->getParam("code");
-          refreshToken = param->value().c_str();
-          DEBUG_PRINT(F("New refreshToken: "));
-          DEBUG_PRINTLN(refreshToken);
-          serializeConfig();
+          const char * const authCode = param->value().c_str();
+          DEBUG_PRINT(F("Auth Code: "));
+          DEBUG_PRINTLN(authCode);
+          const char* const host = request->host().c_str();
+          DEBUG_PRINT(F("Host: "));
+          DEBUG_PRINTLN(host);
+          const char* const protocol = "http";
+          DEBUG_PRINT(F("Protocol: "));
+          DEBUG_PRINTLN(protocol);
+          const char* const redirectUriRelative = request->url().c_str(); // "/spotify-";
+          DEBUG_PRINT(F("Redirect URI Relative: "));
+          DEBUG_PRINTLN(redirectUriRelative);
+          const char* const redirectUri = (String(protocol) + "://" + String(host) + String(redirectUriRelative)).c_str();
+          DEBUG_PRINT(F("Redirect URI: "));
+          DEBUG_PRINTLN(redirectUri);
+          if (sp) {
+            sp->get_refresh_token(authCode, redirectUri);
+            refreshToken = sp->get_user_tokens().refresh_token;
+            DEBUG_PRINT(F("New refreshToken: "));
+            DEBUG_PRINTLN(refreshToken);
+            serializeConfig();
+          } else {
+            DEBUG_PRINTLN(F("Spotify object not initialized! Likely because clientId and/or clientSecret are missing!"));
+          }
           DEBUG_PRINTLN(F("Redirecting to /settings/um"));
           request->redirect("/settings/um");
         } else {
@@ -126,26 +146,32 @@ class SpotifyUsermod : public Usermod {
     void loop() {
       if (!enabled || strip.isUpdating()) return;
 
-      if (!sp && clientId != "" && clientSecret != "" && refreshToken != "") {
+      if (!sp && clientId != "" && clientSecret != "") {
         DEBUG_PRINT(F("clientId: "));
         DEBUG_PRINTLN(clientId);
         DEBUG_PRINT(F("clientSecret: "));
         DEBUG_PRINTLN(clientSecret);
-        DEBUG_PRINT(F("refreshToken: "));
-        DEBUG_PRINTLN(refreshToken);
-        sp = new Spotify(clientId.c_str(), clientSecret.c_str(), refreshToken.c_str(), 80, true); // Construct Spotify object with provided client ID and client secret
+        if (refreshToken != "") {
+          sp = new Spotify(clientId.c_str(), clientSecret.c_str(), refreshToken.c_str(), 80, true);
+        } else {
+          sp = new Spotify(clientId.c_str(), clientSecret.c_str(), 80, true);
+        }
         DEBUG_PRINTLN(F("Instanciated Spotify object"));
         sp->begin();
         DEBUG_PRINTLN(F("Called Spoitfy::begin()"));
       }
 
-      if (millis() - lastTime > 8000 && sp && sp->is_auth() && WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)){
-        IPAddress ip = WiFi.localIP();
-        DEBUG_PRINT(F("IP Address: "));
-        DEBUG_PRINTLN(ip);
-        
+      if (millis() - lastTime > 8000 && sp && sp->is_auth() && WiFi.status() == WL_CONNECTED) {
+        if (sp->_access_token[0] == '\0') { // If access token is empty, get one
+          DEBUG_PRINTLN("Getting access token...");
+          sp->get_token();
+          if (sp->_access_token[0] == '\0') {
+            DEBUG_PRINTLN("Failed to get access token!");
+            return;
+          }
+        }
+        DEBUG_PRINTLN("Got access token!");
         lastTime = millis();
-        DEBUG_PRINTLN("Authenticated!");
         JsonDocument playback_state_filter;
         playback_state_filter["timestamp"] = true;
         playback_state_filter["is_playing"] = true;
