@@ -51,6 +51,19 @@ class SpotifyUsermod : public Usermod {
     String refreshToken = "";
     int audioDelay = 10; // in milliseconds
     unsigned long apiQueryInterval = 1000; // in milliseconds
+    
+    JsonDocument playbackState;
+    JsonDocument audioAnalysis;
+
+    response playbackStateResponse;
+    response audioAnalysisResponse;
+
+    JsonDocument playbackStateFilter;    
+    JsonDocument audioAnalysisFilter;
+
+    String redirectUriPath = "/spotify-callback";
+    String authCode = "";
+    String redirectUri = "";
 
     static const char _name[];
     static const char _enabled[];
@@ -65,36 +78,48 @@ class SpotifyUsermod : public Usermod {
       DEBUG_PRINTLN(F("Connected to WiFi!"));
       DEBUG_PRINT(F("IP Address: "));
       DEBUG_PRINTLN(WiFi.localIP());
+      redirectUri = "http://" + WiFi.localIP().toString() + redirectUriPath;
     }
 
     void setup() {
-      server.on("/spotify-callback", HTTP_GET, [this](AsyncWebServerRequest *request){
-        DEBUG_PRINTLN(F("/spotify-callback was called!"));
+      playbackStateFilter["timestamp"] = true;
+      playbackStateFilter["is_playing"] = true;
+      playbackStateFilter["progress_ms"] = true;
+      playbackStateFilter["item"]["id"] = true;
+      playbackStateFilter["item"]["name"] = true;
+      
+      audioAnalysisFilter["track"]["tempo"] = true;
+      audioAnalysisFilter["track"]["time_signature"] = true;
+      audioAnalysisFilter["track"]["key"] = true;
+      audioAnalysisFilter["track"]["mode"] = true;
+      audioAnalysisFilter["beats"][0]["start"] = true;
+      audioAnalysisFilter["bars"][0]["start"] = true;
+      
+      um_data = new um_data_t;
+      um_data->u_size = 2;
+      um_data->u_type = new um_types_t[um_data->u_size];
+      um_data->u_data = new void*[um_data->u_size];
+      um_data->u_data[0] = &playbackState;
+      um_data->u_type[0] = UMT_FLOAT; // FIXME
+      um_data->u_data[1] = &audioAnalysis;
+      um_data->u_type[1] = UMT_UINT16; // FIXME
+
+      server.on(redirectUriPath, HTTP_GET, [this](AsyncWebServerRequest *request){
+        DEBUG_PRINTLN(F("callback was called!"));
         if (request->hasParam("code")) {
-          AsyncWebParameter* param = request->getParam("code");
-          const char * const authCode = param->value().c_str();
-          DEBUG_PRINT(F("Auth Code: "));
-          DEBUG_PRINTLN(authCode);
-          const char* const host = request->host().c_str();
-          DEBUG_PRINT(F("Host: "));
-          DEBUG_PRINTLN(host);
-          const char* const protocol = "http";
-          DEBUG_PRINT(F("Protocol: "));
-          DEBUG_PRINTLN(protocol);
-          const char* const redirectUriRelative = request->url().c_str(); // "/spotify-";
-          DEBUG_PRINT(F("Redirect URI Relative: "));
-          DEBUG_PRINTLN(redirectUriRelative);
-          const char* const redirectUri = (String(protocol) + "://" + String(host) + String(redirectUriRelative)).c_str();
-          DEBUG_PRINT(F("Redirect URI: "));
+          redirectUri = "http://" + request->host() + redirectUriPath;
+          DEBUG_PRINT(F("Calculated Redirect URI: "));
           DEBUG_PRINTLN(redirectUri);
-          if (sp) {
-            sp->get_refresh_token(authCode, redirectUri);
-            refreshToken = sp->get_user_tokens().refresh_token;
-            DEBUG_PRINT(F("New refreshToken: "));
-            DEBUG_PRINTLN(refreshToken);
-            serializeConfig();
-          } else {
-            DEBUG_PRINTLN(F("Spotify object not initialized! Likely because clientId and/or clientSecret are missing!"));
+          AsyncWebParameter* param = request->getParam("code");
+          authCode = param->value();
+          DEBUG_PRINT(F("Received Auth Code: "));
+          DEBUG_PRINTLN(authCode);
+          if (requestRefreshToken()) {
+            if (sp->get_access_token()) {
+              DEBUG_PRINTLN(F("Got access token!"));
+            } else {
+              DEBUG_PRINTLN(F("Failed to get access token!"));
+            }
           }
           DEBUG_PRINTLN(F("Redirecting to /settings/um"));
           request->redirect("/settings/um");
@@ -106,41 +131,29 @@ class SpotifyUsermod : public Usermod {
       initDone = true;
     }
 
-    String getKeySignature(int key, int mode) {
-        if (key == -1 || mode == -1) // No key detected
-            return "Unknown";
-
-        String keySignature;
-        const String keys[12] = {"C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab", "A", "A#/Bb", "B"};
-
-        // Determine key signature based on key and mode
-        if (mode == 0) { // Minor
-            keySignature.concat(keys[(key + 9) % 12]);
-            keySignature.concat(" minor");
-        } else if (mode == 1) { // Major
-            keySignature.concat(keys[key]);
-            keySignature.concat(" major");
+    bool requestRefreshToken() {
+      if (sp) {
+        DEBUG_PRINT("Auth Code: ");
+        DEBUG_PRINTLN(authCode);
+        DEBUG_PRINT("Redirect URI: ");
+        DEBUG_PRINTLN(redirectUri);
+        bool gotToken = sp->get_refresh_token(authCode.c_str(), redirectUri.c_str());
+        if (gotToken) {
+          refreshToken = sp->get_user_tokens().refresh_token;
+          DEBUG_PRINT(F("Received Refresh Token: "));
+          DEBUG_PRINTLN(refreshToken);
+          if (refreshToken != "") {
+            authCode = "";
+            serializeConfig();
+          }
+        } else {
+          DEBUG_PRINTLN(F("Failed to get refresh token!"));
         }
-
-        return keySignature;
-    }
-
-    String formatMilliseconds(int milliseconds) {
-        int seconds = milliseconds / 1000; // Convert milliseconds to seconds
-        int minutes = seconds / 60; // Extract minutes
-        seconds %= 60; // Extract remaining seconds
-
-        String formattedTime;
-        if (minutes < 10) {
-            formattedTime.concat("0"); // Add leading zero for minutes < 10
-        }
-        formattedTime.concat(String(minutes) + ":");
-        if (seconds < 10) {
-            formattedTime.concat("0"); // Add leading zero for seconds < 10
-        }
-        formattedTime.concat(String(seconds));
-        
-        return formattedTime;
+        return gotToken;
+      } else {
+        DEBUG_PRINTLN(F("Spotify object not initialized! Likely because clientId and/or clientSecret are missing!"));
+        return false;
+      }
     }
 
     void loop() {
@@ -152,85 +165,93 @@ class SpotifyUsermod : public Usermod {
         DEBUG_PRINT(F("clientSecret: "));
         DEBUG_PRINTLN(clientSecret);
         if (refreshToken != "") {
-          sp = new Spotify(clientId.c_str(), clientSecret.c_str(), refreshToken.c_str(), 80, true);
+          sp = new Spotify(clientId.c_str(), clientSecret.c_str(), refreshToken.c_str(), 80);
         } else {
-          sp = new Spotify(clientId.c_str(), clientSecret.c_str(), 80, true);
+          sp = new Spotify(clientId.c_str(), clientSecret.c_str(), 80);
         }
         DEBUG_PRINTLN(F("Instanciated Spotify object"));
         sp->begin();
         DEBUG_PRINTLN(F("Called Spoitfy::begin()"));
       }
 
-      if (millis() - lastTime > 8000 && sp && sp->is_auth() && WiFi.status() == WL_CONNECTED) {
+      if (millis() - lastTime > apiQueryInterval && sp && WiFi.status() == WL_CONNECTED) {
+        lastTime = millis();
+        if (redirectUri != "" && clientId != "" && clientSecret != "") {
+          if (authCode != "") {
+            if (requestRefreshToken()) {
+              if (sp->get_access_token()) {
+                DEBUG_PRINTLN(F("Got access token!"));
+              } else {
+                DEBUG_PRINTLN(F("Failed to get access token!"));
+              }
+            } else {
+              return;
+            }
+          } else if (refreshToken == "") {
+            DEBUG_PRINTLN(F("No auth code or refresh token available!"));
+            return;
+          }
+        } else {
+          DEBUG_PRINTLN(F("Missing clientId, clientSecret and/or redirectUri!"));
+          return;
+        }
         //sp->get_token(); // Todo
         //DEBUG_PRINTLN("Got access token!");
-        lastTime = millis();
-        JsonDocument playback_state_filter;
-        playback_state_filter["timestamp"] = true;
-        playback_state_filter["is_playing"] = true;
-        playback_state_filter["progress_ms"] = true;
-        playback_state_filter["item"]["id"] = true;
-        playback_state_filter["item"]["name"] = true;
-        
-        JsonDocument audio_analysis_filter;
-        audio_analysis_filter["track"]["tempo"] = true;
-        audio_analysis_filter["track"]["time_signature"] = true;
-        audio_analysis_filter["track"]["key"] = true;
-        audio_analysis_filter["track"]["mode"] = true;
-        audio_analysis_filter["beats"][0]["start"] = true;
-        audio_analysis_filter["bars"][0]["start"] = true;
 
-        response playback_state_response = sp->current_playback_state(playback_state_filter);
-        int status_code = playback_state_response.status_code;
-        const String track_id = playback_state_response.reply["item"]["id"].as<String>();
-
+        const String previousTrackId = playbackState["item"]["id"].as<String>();
+        playbackStateResponse = sp->current_playback_state(playbackStateFilter);
+        int statusCode = playbackStateResponse.status_code;
         DEBUG_PRINT("Status Code: ");
-        DEBUG_PRINTLN(status_code);
+        DEBUG_PRINTLN(statusCode);
+        playbackState = playbackStateResponse.reply;
+        const String trackId = playbackState["item"]["id"].as<String>();
 
-        if (track_id == "null") {
+        if (previousTrackId == trackId) {
+          return; // No need to update if the track is the same
+        }
+
+        if (trackId == "null") {
           DEBUG_PRINTLN("No song is currently playing!");
           return;
         }
 
-        String song_title = playback_state_response.reply["item"]["name"].as<String>();
-        //String song_id = playback_state_response.reply["item"]["id"].as<String>();
-
-        int progress_ms = playback_state_response.reply["progress_ms"].as<int>();
-        String playback_position = formatMilliseconds(progress_ms);
+        String songTitle = playbackState["item"]["name"].as<String>();
+        int progressMs = playbackState["progress_ms"].as<int>();
+        String playbackPosition = formatMilliseconds(progressMs);
 
         DEBUG_PRINT("Song Title: ");
-        DEBUG_PRINTLN(song_title);
+        DEBUG_PRINTLN(songTitle);
         DEBUG_PRINT("Song ID: ");
-        DEBUG_PRINTLN(track_id);
+        DEBUG_PRINTLN(trackId);
         DEBUG_PRINT("Playback Position: ");
-        DEBUG_PRINT(playback_position);
+        DEBUG_PRINTLN(playbackPosition);
+        
+        DEBUG_PRINTLN("Getting audio analysis...");
+        audioAnalysisResponse = sp->get_track_audio_analysis(trackId.c_str(), audioAnalysisFilter);
+        audioAnalysis = audioAnalysisResponse.reply;
 
-
-        DEBUG_PRINTLN("\nGetting audio analysis...");
-        response audio_analysis = sp->get_track_audio_analysis(track_id.c_str(), audio_analysis_filter);
-
-        float tempo = audio_analysis.reply["track"]["tempo"].as<float>();
-        int key = audio_analysis.reply["track"]["key"].as<int>();
-        int mode = audio_analysis.reply["track"]["mode"].as<int>();
-        String key_signature = getKeySignature(key, mode);
-        int time_signature_numerator = audio_analysis.reply["track"]["time_signature"].as<int>();
-        String time_signature = String(time_signature_numerator) + "/4";
+        float tempo = audioAnalysis["track"]["tempo"].as<float>();
+        int key = audioAnalysis["track"]["key"].as<int>();
+        int mode = audioAnalysis["track"]["mode"].as<int>();
+        String keySignature = getKeySignature(key, mode);
+        int timeSignatureNumerator = audioAnalysis["track"]["time_signature"].as<int>();
+        String timeSignature = String(timeSignatureNumerator) + "/4";
 
         DEBUG_PRINT("Tempo: ");
         DEBUG_PRINT(tempo);
         DEBUG_PRINTLN("bpm");
         DEBUG_PRINT("Time Signature: ");
-        DEBUG_PRINTLN(time_signature);
+        DEBUG_PRINTLN(timeSignature);
         DEBUG_PRINT("Key Signature: ");
-        DEBUG_PRINTLN(key_signature);
+        DEBUG_PRINTLN(keySignature);
         
-        JsonArray bars = audio_analysis.reply["bars"].as<JsonArray>();
+        JsonArray bars = audioAnalysis["bars"].as<JsonArray>();
         for (JsonVariant bar : bars) {
-            float bar_start_time = bar["start"].as<float>();
-            int bar_start_time_ms = (float)bar_start_time*1000.0;
-            if (bar_start_time_ms >= progress_ms) {
+            float barStartTime = bar["start"].as<float>();
+            int barStartTimeMs = (float)barStartTime*1000.0;
+            if (barStartTimeMs >= progressMs) {
               DEBUG_PRINT("Next bar in: ");
-              DEBUG_PRINT(bar_start_time_ms-progress_ms);
+              DEBUG_PRINT(barStartTimeMs-progressMs);
               DEBUG_PRINTLN("ms");
               break;
             }
@@ -299,6 +320,43 @@ class SpotifyUsermod : public Usermod {
 
     uint16_t getId() {
       return USERMOD_ID_SPOTIFY;
+    }
+
+    String getKeySignature(int key, int mode) {
+        if (key == -1 || mode == -1) // No key detected
+            return "Unknown";
+
+        String keySignature;
+        const String keys[12] = {"C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab", "A", "A#/Bb", "B"};
+
+        // Determine key signature based on key and mode
+        if (mode == 0) { // Minor
+            keySignature.concat(keys[(key + 9) % 12]);
+            keySignature.concat(" minor");
+        } else if (mode == 1) { // Major
+            keySignature.concat(keys[key]);
+            keySignature.concat(" major");
+        }
+
+        return keySignature;
+    }
+
+    String formatMilliseconds(int milliseconds) {
+        int seconds = milliseconds / 1000; // Convert milliseconds to seconds
+        int minutes = seconds / 60; // Extract minutes
+        seconds %= 60; // Extract remaining seconds
+
+        String formattedTime;
+        if (minutes < 10) {
+            formattedTime.concat("0"); // Add leading zero for minutes < 10
+        }
+        formattedTime.concat(String(minutes) + ":");
+        if (seconds < 10) {
+            formattedTime.concat("0"); // Add leading zero for seconds < 10
+        }
+        formattedTime.concat(String(seconds));
+        
+        return formattedTime;
     }
 
 };
