@@ -114,13 +114,13 @@ class SpotifyUsermod : public Usermod {
           authCode = param->value();
           DEBUG_PRINT(F("Received Auth Code: "));
           DEBUG_PRINTLN(authCode);
-          if (requestRefreshToken()) {
-            if (sp->get_access_token()) {
-              DEBUG_PRINTLN(F("Got access token!"));
-            } else {
-              DEBUG_PRINTLN(F("Failed to get access token!"));
-            }
-          }
+          // if (requestRefreshToken()) {
+          //   if (sp->get_access_token()) {
+          //     DEBUG_PRINTLN(F("Got access token!"));
+          //   } else {
+          //     DEBUG_PRINTLN(F("Failed to get access token!"));
+          //   }
+          // }
           DEBUG_PRINTLN(F("Redirecting to /settings/um"));
           request->redirect("/settings/um");
         } else {
@@ -165,9 +165,9 @@ class SpotifyUsermod : public Usermod {
         DEBUG_PRINT(F("clientSecret: "));
         DEBUG_PRINTLN(clientSecret);
         if (refreshToken != "") {
-          sp = new Spotify(clientId.c_str(), clientSecret.c_str(), refreshToken.c_str(), 80);
+          sp = new Spotify(clientId.c_str(), clientSecret.c_str(), refreshToken.c_str(), 80, true);
         } else {
-          sp = new Spotify(clientId.c_str(), clientSecret.c_str(), 80);
+          sp = new Spotify(clientId.c_str(), clientSecret.c_str(), 80, true);
         }
         DEBUG_PRINTLN(F("Instanciated Spotify object"));
         sp->begin();
