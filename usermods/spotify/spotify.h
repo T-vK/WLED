@@ -114,13 +114,13 @@ class SpotifyUsermod : public Usermod {
           authCode = param->value();
           DEBUG_PRINT(F("Received Auth Code: "));
           DEBUG_PRINTLN(authCode);
-          // if (requestRefreshToken()) {
-          //   if (sp->get_access_token()) {
-          //     DEBUG_PRINTLN(F("Got access token!"));
-          //   } else {
-          //     DEBUG_PRINTLN(F("Failed to get access token!"));
-          //   }
-          // }
+          if (requestRefreshToken()) {
+            if (sp->get_access_token()) {
+              DEBUG_PRINTLN(F("Got access token!"));
+            } else {
+              DEBUG_PRINTLN(F("Failed to get access token!"));
+            }
+          }
           DEBUG_PRINTLN(F("Redirecting to /settings/um"));
           request->redirect("/settings/um");
         } else {
