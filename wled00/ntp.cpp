@@ -213,8 +213,8 @@ void sendNTPPacket()
   }
 
   DEBUG_PRINTLN(F("send NTP"));
-  byte pbuf[NTP_PACKET_SIZE];
-  memset(pbuf, 0, NTP_PACKET_SIZE);
+  byte pbuf[WLED_NTP_PACKET_SIZE];
+  memset(pbuf, 0, WLED_NTP_PACKET_SIZE);
 
   pbuf[0] = 0b11100011;   // LI, Version, Mode
   pbuf[1] = 0;     // Stratum, or type of clock
@@ -227,7 +227,7 @@ void sendNTPPacket()
   pbuf[15]  = 52;
 
   ntpUdp.beginPacket(ntpServerIP, 123); //NTP requests are to port 123
-  ntpUdp.write(pbuf, NTP_PACKET_SIZE);
+  ntpUdp.write(pbuf, WLED_NTP_PACKET_SIZE);
   ntpUdp.endPacket();
 }
 
@@ -250,7 +250,7 @@ static bool isValidNtpResponse(byte * ntpPacket) {
 bool checkNTPResponse()
 {
   int cb = ntpUdp.parsePacket();
-  if (cb < NTP_MIN_PACKET_SIZE) {
+  if (cb < WLED_NTP_MIN_PACKET_SIZE) {
     #ifdef ARDUINO_ARCH_ESP32   // I had problems using udp.flush() on 8266
     if (cb > 0) ntpUdp.flush();  // this avoids memory leaks on esp32
     #endif
@@ -260,8 +260,8 @@ bool checkNTPResponse()
   uint32_t ntpPacketReceivedTime = millis();
   DEBUG_PRINT(F("NTP recv, l="));
   DEBUG_PRINTLN(cb);
-  byte pbuf[NTP_PACKET_SIZE];
-  ntpUdp.read(pbuf, NTP_PACKET_SIZE); // read the packet into the buffer
+  byte pbuf[WLED_NTP_PACKET_SIZE];
+  ntpUdp.read(pbuf, WLED_NTP_PACKET_SIZE); // read the packet into the buffer
   if (!isValidNtpResponse(pbuf)) return false;  // verify we have a valid response to client
 
   Toki::Time arrived  = toki.fromNTP(pbuf + 32);

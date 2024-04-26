@@ -420,8 +420,8 @@
 #define SUBPAGE_JS              254
 #define SUBPAGE_WELCOME         255
 
-#define NTP_PACKET_SIZE 48       // size of NTP receive buffer
-#define NTP_MIN_PACKET_SIZE 48   // min expected size - NTP v4 allows for "extended information" appended to the standard fields
+#define WLED_NTP_PACKET_SIZE 48       // size of NTP receive buffer
+#define WLED_NTP_MIN_PACKET_SIZE 48   // min expected size - NTP v4 allows for "extended information" appended to the standard fields
 
 //maximum number of rendered LEDs - this does not have to match max. physical LEDs, e.g. if there are virtual busses
 #ifndef MAX_LEDS
