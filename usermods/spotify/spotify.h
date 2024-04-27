@@ -97,6 +97,8 @@ class SpotifyUsermod : public Usermod {
     String authCode = "";
     String redirectUri = "";
 
+    float fadeOutSpeed = 0.999;
+
     static const char _name[];
     static const char _enabled[];
 
@@ -457,13 +459,42 @@ class SpotifyUsermod : public Usermod {
         beatCounter++;
         DEBUG_PRINT("New beat detected: ");
         DEBUG_PRINT(beatCounter);
-        DEBUG_PRINTLN("/4");
+        DEBUG_PRINT("/");
+        DEBUG_PRINTLN(timeSignatureNumerator);
         beats.isNew = false;
       }
-      // timeSignatureNumerator
 
       previousNow = now;
       previousProgressMs = progressMs;
+    }
+
+    void handleOverlayDraw(){
+      beatFlashEffect();
+    }
+
+    /**
+     * This effect uses strip.setPixelColor to flash the LEDs on the beat of the music, fading out before the next beat starts.
+     * It uses beats.current, beats.next and progressMs to determine what brightness to set the LEDs to.
+     */
+    void beatFlashEffect() {
+      if (progressMs > 0) {
+        int beatDuration = beats.next - beats.current;
+        int timeSinceBeat = progressMs - beats.current;
+        int brightness = 0;
+        if (timeSinceBeat < beatDuration/2) {
+          brightness = map(timeSinceBeat, 0, beatDuration/2, 0, 255);
+        } else {
+          brightness = map(timeSinceBeat, beatDuration/2, beatDuration, 255, 0);
+        }
+        float fadeOutDuration = beatDuration * fadeOutSpeed;
+        int fadeOutStart = beatDuration - fadeOutDuration;
+        if (timeSinceBeat >= fadeOutStart) {
+          brightness = map(timeSinceBeat, fadeOutStart, beatDuration, 255, 0);
+        }
+        for (int i = 0; i < strip.getLength(); i++) {
+          strip.setPixelColor(i, RGBW32(brightness, brightness, brightness, brightness));
+        }
+      }
     }
 
     void printDebugInfo() {
